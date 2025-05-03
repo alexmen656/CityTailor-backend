@@ -180,14 +180,23 @@ const amsterdamData = {
 };
 
 // Funktion zum Generieren eines individuellen Reiseplans mit Gemini
-async function generateTripWithGemini(city, startDate, endDate) {
+async function generateTripWithGemini(city, startDate, endDate, interests = []) {
   // Berechne Anzahl der Tage
   const start = new Date(startDate);
   const end = new Date(endDate);
   const durationInDays = Math.ceil((end - start) / (1000 * 60 * 60 * 24)) + 1; // +1 um Enddatum einzuschließen
   
+  // Formatiere die Interessen für den Prompt
+  let interestsText = "";
+  if (interests && interests.length > 0) {
+    const sortedInterests = [...interests].sort((a, b) => b.rating - a.rating);
+    interestsText = `\n\nBenutzerinteressen (Skala 1-10, höher = wichtiger):\n${sortedInterests.map(
+      interest => `- ${interest.name}: ${interest.rating}`
+    ).join('\n')}`;
+  }
+  
   // Erstelle einen strukturierten Prompt für Gemini
-  const prompt = `Erstelle einen detaillierten Reiseplan für ${city} von ${startDate} bis ${endDate} (${durationInDays} Tage).
+  const prompt = `Erstelle einen detaillierten Reiseplan für ${city} von ${startDate} bis ${endDate} (${durationInDays} Tage).${interestsText}
   
   Gib die Antwort in diesem exakten JSON-Format zurück:
   {
@@ -221,8 +230,11 @@ async function generateTripWithGemini(city, startDate, endDate) {
   2. Erstelle eine logistische sinnvolle Reihenfolge der Aktivitäten
   3. Passe die Empfehlungen an die Besonderheiten von ${city} an
   4. Achte auf korrekte deutschsprachige Beschreibungen
-  5. Achte auf ein realistisches Zeitmanagement zwischen den Aktivitäten`;
+  5. Achte auf ein realistisches Zeitmanagement zwischen den Aktivitäten
+  6. Berücksichtige die Benutzerinteressen bei der Auswahl der Aktivitäten - bevorzuge Aktivitäten aus Kategorien mit höherem Rating`;
 
+  console.log(prompt);
+  
   try {
     // Gemini-API aufrufen
     const result = await model.generateContent(prompt);
@@ -256,6 +268,7 @@ app.post('/api/trips', async (req, res) => {
   const location = req.body.location?.toLowerCase();
   const startDate = req.body.startDate;
   const endDate = req.body.endDate;
+  const interests = req.body.interests || [];
   
   try {
     if (location && location.includes('amsterdam') && 
@@ -270,12 +283,14 @@ app.post('/api/trips', async (req, res) => {
     } else if (location && startDate && endDate) {
       // Für alle anderen Städte Gemini verwenden
       console.log(`Generiere Reiseplan für ${location} mit Gemini`);
+      console.log(`Benutzerinteressen:`, interests);
       
       try {
         const tripData = await generateTripWithGemini(
           req.body.location,
           startDate,
-          endDate
+          endDate,
+          interests
         );
         
         res.status(201).json({
