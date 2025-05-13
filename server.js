@@ -1,16 +1,27 @@
-const express = require('express');
-const cors = require('cors');
-const dotenv = require('dotenv');
-const { GoogleGenerativeAI } = require('@google/generative-ai');
-const { createApi } = require('unsplash-js');
-const fetch = require('node-fetch');
+import express from 'express';
+import cors from 'cors';
+import dotenv from 'dotenv';
+import { GoogleGenerativeAI } from '@google/generative-ai';
+import { initLogger, log } from 'control-center-logger';
+import { createApi } from 'unsplash-js';
+import fetch from 'node-fetch';
+
 const app = express();
 const port = 4040;
 
 dotenv.config();
 
+initLogger({
+  apiUrl: 'https://alex.polan.sk/control-center/api/service_logs.php',
+  projectId: '3RBl3LlTd463yHS8Zcoa',
+  apiKey: process.env.CONTROL_CENTER_API_KEY || '',
+  environment: 'production',
+  service: 'backend'
+})
+
 app.use(express.json());
 app.use(cors());
+log.success('App Stated!')
 
 const API_KEY = process.env.GEMINI_API_KEY;
 const genAI = new GoogleGenerativeAI(API_KEY);
@@ -48,6 +59,7 @@ async function getCityImage(cityName) {
     return null;
   } catch (error) {
     console.error('Fehler beim Abrufen des Stadtbildes:', error);
+    log.error('Fehler beim Abrufen des Stadtbildes:', { error });
     return null;
   }
 }
@@ -336,6 +348,7 @@ async function generateTripWithGemini(city, startDate, endDate, interests = [], 
   ${langConfig.guidelines.map((guideline, index) => `${index + 1}. ${guideline}`).join('\n  ')}`;
 
   console.log(prompt);
+  log.info(prompt);
   
   try {
     const result = await model.generateContent(prompt);
@@ -351,18 +364,21 @@ async function generateTripWithGemini(city, startDate, endDate, interests = [], 
     
     const tripData = JSON.parse(jsonText);
     console.log(`Gemini-generierter Reiseplan in ${language} erstellt`);
+    log.info(`Gemini-generierter Reiseplan in ${language} erstellt`, { data: tripData });
     
     const cleanedTripData = cleanupResponseData(tripData);
     return cleanedTripData;
   } catch (error) {
     console.error(`Fehler bei der Erstellung des Reiseplans mit Gemini in ${language}:`, error);
+    log.error(`Fehler bei der Erstellung des Reiseplans mit Gemini in ${language}:`, { error });
     throw new Error(`Konnte keinen Reiseplan mit Gemini in ${language} erstellen`);
   }
 }
 
 app.post('/api/trips', async (req, res) => {
   console.log('Empfangene Daten:', req.body);
-  
+  log.info('Empfangene Daten:', { data: req.body });
+
   const location = req.body.location?.toLowerCase();
   const startDate = req.body.startDate;
   const endDate = req.body.endDate;
@@ -380,13 +396,18 @@ app.post('/api/trips', async (req, res) => {
   const travelMode = isPremiumUser ? requestedTravelMode : 'moderate';
   
   console.log(`Sprache des Benutzers: ${language}`);
+  log.info(`Sprache des Benutzers: ${language}`, { data: { language } });
   console.log(`Premium-Status: ${isPremiumUser ? 'Premium' : 'Kein Premium'}`);
+  log.info(`Premium-Status: ${isPremiumUser ? 'Premium' : 'Kein Premium'}`, { data: { isPremiumUser } });
   console.log(`Reisetyp: ${travelType}, Transportart: ${transportationType}, Reiseintensität: ${travelMode}${!isPremiumUser && requestedTravelMode !== 'moderate' ? ' (auf "moderate" zurückgesetzt, da kein Premium)' : ''}`);
+  log.info(`Reisetyp: ${travelType}, Transportart: ${transportationType}, Reiseintensität: ${travelMode}${!isPremiumUser && requestedTravelMode !== 'moderate' ? ' (auf "moderate" zurückgesetzt, da kein Premium)' : ''}`, { data: { travelType, transportationType, travelMode } });
   
   try {
     if (location && startDate && endDate) {
       console.log(`Generiere Reiseplan für ${location} mit Gemini in Sprache: ${language}`);
+      log.info(`Generiere Reiseplan für ${location} mit Gemini in Sprache: ${language}`, { data: { location, language } });
       console.log(`Benutzerinteressen:`, interests);
+      log.info(`Benutzerinteressen:`, { data: { interests } });
       
       let attempts = 0;
       let maxAttempts = 3;
@@ -397,6 +418,7 @@ app.post('/api/trips', async (req, res) => {
         try {
           console.log(`Versuch ${attempts} von ${maxAttempts}`);
           
+          log.info(`Versuch ${attempts} von ${maxAttempts}`, { data: { attempts, maxAttempts } });
           const tripData = await generateTripWithGemini(
             req.body.location,
             startDate,
@@ -416,6 +438,8 @@ app.post('/api/trips', async (req, res) => {
               cityImage = await getCityImage(req.body.location);
             } catch (imgError) {
               console.warn(`Fehler beim Abrufen des Stadtbildes (Versuch ${imageAttempts}):`, imgError);
+              log.warn(`Fehler beim Abrufen des Stadtbildes (Versuch ${imageAttempts}):`, { error: imgError });
+
               if (imageAttempts < maxAttempts) {
                 await new Promise(resolve => setTimeout(resolve, 1000));
               }
@@ -425,25 +449,29 @@ app.post('/api/trips', async (req, res) => {
           if (cityImage) {
             tripData.image = cityImage;
           }
-          
+          log.success('Reiseplan mit Gemini erstellt', { data: tripData });
           return res.status(201).json({
             success: true,
             message: "Reiseplan mit Gemini erstellt",
             data: tripData
           });
+
         } catch (error) {
           lastError = error;
           console.error(`Fehler bei der Erstellung des Reiseplans (Versuch ${attempts}):`, error);
+          log.error(`Fehler bei der Erstellung des Reiseplans (Versuch ${attempts}):`, { error });
           
           if (attempts < maxAttempts) {
             const waitTime = 1000 * attempts;
             console.log(`Warte ${waitTime}ms vor dem nächsten Versuch...`);
+            log.info(`Warte ${waitTime}ms vor dem nächsten Versuch...`, { data: { waitTime } });
             await new Promise(resolve => setTimeout(resolve, waitTime));
           }
         }
       }
       
       console.error(`Alle ${maxAttempts} Versuche zur Erstellung des Reiseplans fehlgeschlagen`);
+      log.error(`Alle ${maxAttempts} Versuche zur Erstellung des Reiseplans fehlgeschlagen`, { data: { maxAttempts } });
       res.status(500).json({
         success: false,
         message: `Fehler bei der Erstellung des Reiseplans nach ${maxAttempts} Versuchen`,
@@ -457,6 +485,7 @@ app.post('/api/trips', async (req, res) => {
     }
   } catch (error) {
     console.error("Server-Fehler:", error);
+    log.error("Server-Fehler:", { error });
     res.status(500).json({
       success: false,
       message: "Interner Serverfehler",
@@ -476,5 +505,10 @@ app.listen(port, '0.0.0.0', () => {
   console.log(`Server läuft auf http://localhost:${port}`);
   console.log(`Server ist im Netzwerk erreichbar unter http://[DEINE-IP-ADRESSE]:${port}`);
   console.log(`Gemini-Integration ist aktiv. API-Key ${API_KEY === "DEIN_GEMINI_API_KEY" ? "FEHLT NOCH" : "wurde konfiguriert"}`);
+  log.info(`Server läuft auf http://localhost:${port}`, { data: { port } });
+  log.info(`Server ist im Netzwerk erreichbar unter http://[DEINE-IP-ADRESSE]:${port}`, { data: { port } });
+  log.info(`Gemini-Integration ist aktiv. API-Key ${API_KEY === "DEIN_GEMINI_API_KEY" ? "FEHLT NOCH" : "wurde konfiguriert"}`);
 });
-module.exports = (req, res) => app(req, res);
+
+// Export as ES module
+export default (req, res) => app(req, res);
