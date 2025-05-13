@@ -2,22 +2,70 @@ const express = require('express');
 const cors = require('cors');
 const dotenv = require('dotenv');
 const { GoogleGenerativeAI } = require('@google/generative-ai');
+const { createApi } = require('unsplash-js');
+const fetch = require('node-fetch');
 const app = express();
 const port = 4040;
 
-// .env-Datei laden
 dotenv.config();
 
-// Middleware für JSON und CORS
 app.use(express.json());
 app.use(cors());
 
-// Google Gemini API konfigurieren
 const API_KEY = process.env.GEMINI_API_KEY;
 const genAI = new GoogleGenerativeAI(API_KEY);
 
-// Gemini-Modell initialisieren
 const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash-preview-04-17" });
+
+const unsplash = createApi({
+  accessKey: process.env.UNSPLASH_ACCESS_KEY || '',
+  fetch: fetch
+});
+
+async function getCityImage(cityName) {
+  try {
+    const result = await unsplash.search.getPhotos({
+      query: `${cityName} city`,
+      orientation: 'landscape',
+      perPage: 1
+    });
+    
+    if (result.errors) {
+      console.error('Unsplash API Fehler:', result.errors[0]);
+      return null;
+    }
+    
+    if (result.response && result.response.results && result.response.results.length > 0) {
+      const photo = result.response.results[0];
+      return {
+        url: photo.urls.regular,
+        description: photo.alt_description || `Foto von ${cityName}`,
+        photographer: photo.user.name,
+        photographerLink: photo.user.links.html
+      };
+    }
+    
+    return null;
+  } catch (error) {
+    console.error('Fehler beim Abrufen des Stadtbildes:', error);
+    return null;
+  }
+}
+
+function cleanupResponseData(data) {
+  if (typeof data === 'string') {
+    return data.replace(/(\*\*|__)/g, '');
+  } else if (Array.isArray(data)) {
+    return data.map(item => cleanupResponseData(item));
+  } else if (data !== null && typeof data === 'object') {
+    const cleanedObj = {};
+    for (const key in data) {
+      cleanedObj[key] = cleanupResponseData(data[key]);
+    }
+    return cleanedObj;
+  }
+  return data;
+}
 
 // Statische Daten für Amsterdam vom 20.-23. Mai 2025
 const amsterdamData = {
@@ -179,14 +227,11 @@ const amsterdamData = {
   }
 };
 
-// Funktion zum Generieren eines individuellen Reiseplans mit Gemini
-async function generateTripWithGemini(city, startDate, endDate, interests = []) {
-  // Berechne Anzahl der Tage
+async function generateTripWithGemini(city, startDate, endDate, interests = [], language = 'DE') {
   const start = new Date(startDate);
   const end = new Date(endDate);
-  const durationInDays = Math.ceil((end - start) / (1000 * 60 * 60 * 24)) + 1; // +1 um Enddatum einzuschließen
+  const durationInDays = Math.ceil((end - start) / (1000 * 60 * 60 * 24)) + 1;
   
-  // Formatiere die Interessen für den Prompt
   let interestsText = "";
   if (interests && interests.length > 0) {
     const sortedInterests = [...interests].sort((a, b) => b.rating - a.rating);
@@ -195,10 +240,101 @@ async function generateTripWithGemini(city, startDate, endDate, interests = []) 
     ).join('\n')}`;
   }
   
-  // Erstelle einen strukturierten Prompt für Gemini
-  const prompt = `Erstelle einen detaillierten Reiseplan für ${city} von ${startDate} bis ${endDate} (${durationInDays} Tage).${interestsText}
+  const languageConfig = {
+    'DE': {
+      promptTitle: `Erstelle einen detaillierten Reiseplan für ${city} von ${startDate} bis ${endDate} (${durationInDays} Tage).`,
+      interestsTitle: 'Benutzerinteressen (Skala 1-10, höher = wichtiger):',
+      jsonFormat: 'Gib die Antwort in diesem exakten JSON-Format zurück:',
+      guidelines: [
+        `Berücksichtige tatsächlich existierende, bekannte Sehenswürdigkeiten und Attraktionen in ${city}`,
+        'Erstelle eine logistische sinnvolle Reihenfolge der Aktivitäten',
+        `Passe die Empfehlungen an die Besonderheiten von ${city} an`,
+        'Achte auf korrekte deutschsprachige Beschreibungen',
+        'Achte auf ein realistisches Zeitmanagement zwischen den Aktivitäten',
+        'Berücksichtige die Benutzerinteressen bei der Auswahl der Aktivitäten - bevorzuge Aktivitäten aus Kategorien mit höherem Rating'
+      ],
+      food: "5 typische lokale Spezialitäten für diese Stadt",
+      transport: "3 Transporttipps für diese Stadt",
+      tips: "3 allgemeine Reisetipps für diese Stadt"
+    },
+    'EN': {
+      promptTitle: `Create a detailed travel plan for ${city} from ${startDate} to ${endDate} (${durationInDays} days).`,
+      interestsTitle: 'User interests (scale 1-10, higher = more important):',
+      jsonFormat: 'Provide the answer in this exact JSON format:',
+      guidelines: [
+        `Include actually existing, well-known sights and attractions in ${city}`,
+        'Create a logistically sensible order of activities',
+        `Adapt the recommendations to the specifics of ${city}`,
+        'Ensure correct English descriptions',
+        'Ensure realistic time management between activities',
+        'Consider user interests when selecting activities - prefer activities from categories with higher ratings'
+      ],
+      food: "5 typical local specialties for this city",
+      transport: "3 transportation tips for this city",
+      tips: "3 general travel tips for this city"
+    },
+    'ES': {
+      promptTitle: `Crea un plan de viaje detallado para ${city} desde ${startDate} hasta ${endDate} (${durationInDays} días).`,
+      interestsTitle: 'Intereses del usuario (escala 1-10, mayor = más importante):',
+      jsonFormat: 'Proporciona la respuesta en este formato JSON exacto:',
+      guidelines: [
+        `Incluye atracciones y lugares de interés conocidos que realmente existan en ${city}`,
+        'Crea un orden de actividades lógico y sensato',
+        `Adapta las recomendaciones a las características específicas de ${city}`,
+        'Asegúrate de que las descripciones en español sean correctas',
+        'Garantiza una gestión realista del tiempo entre actividades',
+        'Considera los intereses del usuario al seleccionar actividades - prefiere actividades de categorías con calificaciones más altas'
+      ],
+      food: "5 especialidades locales típicas de esta ciudad",
+      transport: "3 consejos de transporte para esta ciudad",
+      tips: "3 consejos generales de viaje para esta ciudad"
+    },
+    'IT': {
+      promptTitle: `Crea un piano di viaggio dettagliato per ${city} dal ${startDate} al ${endDate} (${durationInDays} giorni).`,
+      interestsTitle: 'Interessi dell\'utente (scala 1-10, più alto = più importante):',
+      jsonFormat: 'Fornisci la risposta in questo formato JSON esatto:',
+      guidelines: [
+        `Considera attrazioni e luoghi di interesse realmente esistenti e conosciuti a ${city}`,
+        'Crea un ordine logisticamente sensato delle attività',
+        `Adatta i consigli alle specificità di ${city}`,
+        'Assicurati che le descrizioni in italiano siano corrette',
+        'Assicurati che la gestione del tempo tra le attività sia realistica',
+        'Considera gli interessi dell\'utente nella scelta delle attività - preferisci attività di categorie con valutazioni più alte'
+      ],
+      food: "5 specialità locali tipiche di questa città",
+      transport: "3 consigli sui trasporti per questa città",
+      tips: "3 consigli generali di viaggio per questa città"
+    },
+    'FR': {
+      promptTitle: `Crée un plan de voyage détaillé pour ${city} du ${startDate} au ${endDate} (${durationInDays} jours).`,
+      interestsTitle: 'Intérêts de l\'utilisateur (échelle 1-10, plus élevé = plus important):',
+      jsonFormat: 'Fournis la réponse dans ce format JSON exact:',
+      guidelines: [
+        `Inclus des sites touristiques et attractions réellement existants et connus à ${city}`,
+        'Crée un ordre d\'activités logistiquement sensé',
+        `Adapte les recommandations aux spécificités de ${city}`,
+        'Assure-toi que les descriptions en français sont correctes',
+        'Assure une gestion réaliste du temps entre les activités',
+        'Prends en compte les intérêts de l\'utilisateur lors du choix des activités - préfère les activités de catégories avec des notes plus élevées'
+      ],
+      food: "5 spécialités locales typiques de cette ville",
+      transport: "3 conseils de transport pour cette ville",
+      tips: "3 conseils généraux de voyage pour cette ville"
+    }
+  };
   
-  Gib die Antwort in diesem exakten JSON-Format zurück:
+  const langConfig = languageConfig[language] || languageConfig['EN'];
+  
+  if (interests && interests.length > 0) {
+    const sortedInterests = [...interests].sort((a, b) => b.rating - a.rating);
+    interestsText = `\n\n${langConfig.interestsTitle}\n${sortedInterests.map(
+      interest => `- ${interest.name}: ${interest.rating}`
+    ).join('\n')}`;
+  }
+  
+  const prompt = `${langConfig.promptTitle}${interestsText}
+  
+  ${langConfig.jsonFormat}
   {
     "location": "${city}",
     "period": {
@@ -215,48 +351,41 @@ async function generateTripWithGemini(city, startDate, endDate, interests = []) 
           - title: Name der Aktivität/Sehenswürdigkeit
           - description: Eine kurze Beschreibung
           - location: Der genaue Ort in der Stadt
-          - category: Eine Kategorie wie "Kunst", "Geschichte", "Gastronomie", "Sightseeing" usw.
+          - category: Eine Kategorie wie "Kunst", "Geschichte", "Gastronomie", "Sightseeing" usw. - auf der entsprechenden Sprache des guidelines
       */
     ],
     "recommendations": {
-      "food": ["5 typische lokale Spezialitäten für diese Stadt"],
-      "transport": ["3 Transporttipps für diese Stadt"],
-      "tips": ["3 allgemeine Reisetipps für diese Stadt"]
+      "food": ["${langConfig.food}"],
+      "transport": ["${langConfig.transport}"],
+      "tips": ["${langConfig.tips}"]
     }
   }
 
   Achte auf folgende Punkte:
-  1. Berücksichtige tatsächlich existierende, bekannte Sehenswürdigkeiten und Attraktionen in ${city}
-  2. Erstelle eine logistische sinnvolle Reihenfolge der Aktivitäten
-  3. Passe die Empfehlungen an die Besonderheiten von ${city} an
-  4. Achte auf korrekte deutschsprachige Beschreibungen
-  5. Achte auf ein realistisches Zeitmanagement zwischen den Aktivitäten
-  6. Berücksichtige die Benutzerinteressen bei der Auswahl der Aktivitäten - bevorzuge Aktivitäten aus Kategorien mit höherem Rating`;
+  ${langConfig.guidelines.map((guideline, index) => `${index + 1}. ${guideline}`).join('\n  ')}`;
 
   console.log(prompt);
   
   try {
-    // Gemini-API aufrufen
     const result = await model.generateContent(prompt);
     const response = await result.response;
     const textResponse = response.text();
     
-    // Extrahiere den JSON-Teil
     let jsonMatch = textResponse.match(/```json\s*([\s\S]*?)\s*```/) || 
                     textResponse.match(/\{[\s\S]*\}/);
     
     let jsonText = jsonMatch ? jsonMatch[1] || jsonMatch[0] : textResponse;
     
-    // Entferne eventuelle Markdown-Code-Marker und bereinige das JSON
     jsonText = jsonText.replace(/```json|```/g, '').trim();
     
-    // Parse das JSON
     const tripData = JSON.parse(jsonText);
-    console.log("Gemini-generierter Reiseplan erstellt");
-    return tripData;
+    console.log(`Gemini-generierter Reiseplan in ${language} erstellt`);
+    
+    const cleanedTripData = cleanupResponseData(tripData);
+    return cleanedTripData;
   } catch (error) {
-    console.error("Fehler bei der Erstellung des Reiseplans mit Gemini:", error);
-    throw new Error("Konnte keinen Reiseplan mit Gemini erstellen");
+    console.error(`Fehler bei der Erstellung des Reiseplans mit Gemini in ${language}:`, error);
+    throw new Error(`Konnte keinen Reiseplan mit Gemini in ${language} erstellen`);
   }
 }
 
@@ -269,6 +398,10 @@ app.post('/api/trips', async (req, res) => {
   const startDate = req.body.startDate;
   const endDate = req.body.endDate;
   const interests = req.body.interests || [];
+  // Konvertiere den Sprachcode zu Großbuchstaben, da vom Frontend lowercase codes kommen
+  const language = (req.body.language || 'de').toUpperCase();
+  
+  console.log(`Sprache des Benutzers: ${language}`); // Log für debugging
   
   try {
     if (location && location.includes('amsterdam') && 
@@ -282,29 +415,75 @@ app.post('/api/trips', async (req, res) => {
       });
     } else if (location && startDate && endDate) {
       // Für alle anderen Städte Gemini verwenden
-      console.log(`Generiere Reiseplan für ${location} mit Gemini`);
+      console.log(`Generiere Reiseplan für ${location} mit Gemini in Sprache: ${language}`);
       console.log(`Benutzerinteressen:`, interests);
       
-      try {
-        const tripData = await generateTripWithGemini(
-          req.body.location,
-          startDate,
-          endDate,
-          interests
-        );
-        
-        res.status(201).json({
-          success: true,
-          message: "Reiseplan mit Gemini erstellt",
-          data: tripData
-        });
-      } catch (error) {
-        res.status(500).json({
-          success: false,
-          message: "Fehler bei der Erstellung des Reiseplans",
-          error: error.message
-        });
+      // Initialisiere Wiederholungsversuch-Zähler
+      let attempts = 0;
+      let maxAttempts = 3;
+      let lastError = null;
+      
+      // Führe bis zu 3 Versuche durch
+      while (attempts < maxAttempts) {
+        attempts++;
+        try {
+          console.log(`Versuch ${attempts} von ${maxAttempts}`);
+          
+          // Versuche, den Reiseplan zu generieren
+          const tripData = await generateTripWithGemini(
+            req.body.location,
+            startDate,
+            endDate,
+            interests,
+            language
+          );
+
+          // Stadtbild von Unsplash abrufen (mit Wiederholungsversuch)
+          let cityImage = null;
+          let imageAttempts = 0;
+          while (imageAttempts < maxAttempts && !cityImage) {
+            imageAttempts++;
+            try {
+              cityImage = await getCityImage(req.body.location);
+            } catch (imgError) {
+              console.warn(`Fehler beim Abrufen des Stadtbildes (Versuch ${imageAttempts}):`, imgError);
+              if (imageAttempts < maxAttempts) {
+                // Kurz warten vor dem nächsten Versuch
+                await new Promise(resolve => setTimeout(resolve, 1000));
+              }
+            }
+          }
+          
+          if (cityImage) {
+            tripData.image = cityImage;
+          }
+          
+          // Erfolgreiche Generierung - sende Antwort und beende Schleife
+          return res.status(201).json({
+            success: true,
+            message: "Reiseplan mit Gemini erstellt",
+            data: tripData
+          });
+        } catch (error) {
+          lastError = error;
+          console.error(`Fehler bei der Erstellung des Reiseplans (Versuch ${attempts}):`, error);
+          
+          if (attempts < maxAttempts) {
+            // Warte etwas länger mit jedem Versuch
+            const waitTime = 1000 * attempts; // 1s, dann 2s, dann 3s
+            console.log(`Warte ${waitTime}ms vor dem nächsten Versuch...`);
+            await new Promise(resolve => setTimeout(resolve, waitTime));
+          }
+        }
       }
+      
+      // Wenn wir hier ankommen, sind alle Versuche fehlgeschlagen
+      console.error(`Alle ${maxAttempts} Versuche zur Erstellung des Reiseplans fehlgeschlagen`);
+      res.status(500).json({
+        success: false,
+        message: `Fehler bei der Erstellung des Reiseplans nach ${maxAttempts} Versuchen`,
+        error: lastError?.message || "Unbekannter Fehler"
+      });
     } else {
       // Fehlende Parameter
       res.status(400).json({
@@ -322,7 +501,6 @@ app.post('/api/trips', async (req, res) => {
   }
 });
 
-// Einfacher Status-Endpunkt
 app.get('/api/status', (req, res) => {
   res.json({
     status: "online",
@@ -330,9 +508,9 @@ app.get('/api/status', (req, res) => {
   });
 });
 
-// Server starten
 app.listen(port, '0.0.0.0', () => {
   console.log(`Server läuft auf http://localhost:${port}`);
   console.log(`Server ist im Netzwerk erreichbar unter http://[DEINE-IP-ADRESSE]:${port}`);
   console.log(`Gemini-Integration ist aktiv. API-Key ${API_KEY === "DEIN_GEMINI_API_KEY" ? "FEHLT NOCH" : "wurde konfiguriert"}`);
 });
+module.exports = (req, res) => app(req, res);
