@@ -75,6 +75,11 @@ const amsterdamData = {
     endDate: "2025-05-23",
     durationInDays: 4
   },
+  travelPreferences: {
+    travelType: "solo",
+    transportationType: "walking",
+    travelMode: "moderate"
+  },
   dailyPlans: [
     {
       date: "2025-05-20",
@@ -227,7 +232,7 @@ const amsterdamData = {
   }
 };
 
-async function generateTripWithGemini(city, startDate, endDate, interests = [], language = 'DE') {
+async function generateTripWithGemini(city, startDate, endDate, interests = [], language = 'DE', travelType = 'solo', transportationType = 'mixed', travelMode = 'moderate') {
   const start = new Date(startDate);
   const end = new Date(endDate);
   const durationInDays = Math.ceil((end - start) / (1000 * 60 * 60 * 24)) + 1;
@@ -243,6 +248,26 @@ async function generateTripWithGemini(city, startDate, endDate, interests = [], 
   const languageConfig = {
     'DE': {
       promptTitle: `Erstelle einen detaillierten Reiseplan für ${city} von ${startDate} bis ${endDate} (${durationInDays} Tage).`,
+      travelTypeMap: {
+        solo: 'Einzelreisender',
+        couple: 'Paar',
+        family: 'Familie',
+        business: 'Geschäftsreisender',
+        friends: 'Freundesgruppe'
+      },
+      transportationTypeMap: {
+        walking: 'zu Fuß',
+        publicTransport: 'öffentliche Verkehrsmittel',
+        car: 'Auto',
+        bicycle: 'Fahrrad',
+        mixed: 'gemischte Verkehrsmittel'
+      },
+      travelModeMap: {
+        relaxed: 'entspannt',
+        moderate: 'moderat',
+        intensive: 'intensiv'
+      },
+      travelPrefs: `Reisetyp: %TRAVELTYPE%, Fortbewegungsart: %TRANSPORTATIONTYPE%, Reiseintensität: %TRAVELMODE%`,
       interestsTitle: 'Benutzerinteressen (Skala 1-10, höher = wichtiger):',
       jsonFormat: 'Gib die Antwort in diesem exakten JSON-Format zurück:',
       guidelines: [
@@ -251,7 +276,10 @@ async function generateTripWithGemini(city, startDate, endDate, interests = [], 
         `Passe die Empfehlungen an die Besonderheiten von ${city} an`,
         'Achte auf korrekte deutschsprachige Beschreibungen',
         'Achte auf ein realistisches Zeitmanagement zwischen den Aktivitäten',
-        'Berücksichtige die Benutzerinteressen bei der Auswahl der Aktivitäten - bevorzuge Aktivitäten aus Kategorien mit höherem Rating'
+        'Berücksichtige die Benutzerinteressen bei der Auswahl der Aktivitäten - bevorzuge Aktivitäten aus Kategorien mit höherem Rating',
+        'Passe die Aktivitäten an den Reisetyp an (z.B. familienfreundlich für Familien, romantisch für Paare)',
+        'Berücksichtige die bevorzugte Fortbewegungsart bei der Planung der Tagesrouten',
+        'Passe die Anzahl und Intensität der Aktivitäten an die gewünschte Reiseintensität an'
       ],
       food: "5 typische lokale Spezialitäten für diese Stadt",
       transport: "3 Transporttipps für diese Stadt",
@@ -259,6 +287,26 @@ async function generateTripWithGemini(city, startDate, endDate, interests = [], 
     },
     'EN': {
       promptTitle: `Create a detailed travel plan for ${city} from ${startDate} to ${endDate} (${durationInDays} days).`,
+      travelTypeMap: {
+        solo: 'Solo traveler',
+        couple: 'Couple',
+        family: 'Family',
+        business: 'Business traveler',
+        friends: 'Group of friends'
+      },
+      transportationTypeMap: {
+        walking: 'walking',
+        publicTransport: 'public transport',
+        car: 'car',
+        bicycle: 'bicycle',
+        mixed: 'mixed transportation'
+      },
+      travelModeMap: {
+        relaxed: 'relaxed',
+        moderate: 'moderate',
+        intensive: 'intensive'
+      },
+      travelPrefs: `Travel type: %TRAVELTYPE%, Transportation mode: %TRANSPORTATIONTYPE%, Travel intensity: %TRAVELMODE%`,
       interestsTitle: 'User interests (scale 1-10, higher = more important):',
       jsonFormat: 'Provide the answer in this exact JSON format:',
       guidelines: [
@@ -267,7 +315,10 @@ async function generateTripWithGemini(city, startDate, endDate, interests = [], 
         `Adapt the recommendations to the specifics of ${city}`,
         'Ensure correct English descriptions',
         'Ensure realistic time management between activities',
-        'Consider user interests when selecting activities - prefer activities from categories with higher ratings'
+        'Consider user interests when selecting activities - prefer activities from categories with higher ratings',
+        'Tailor activities to the travel type (e.g. family-friendly for families, romantic for couples)',
+        'Consider the preferred transportation mode when planning daily routes',
+        'Adjust the number and intensity of activities according to the desired travel intensity'
       ],
       food: "5 typical local specialties for this city",
       transport: "3 transportation tips for this city",
@@ -275,6 +326,26 @@ async function generateTripWithGemini(city, startDate, endDate, interests = [], 
     },
     'ES': {
       promptTitle: `Crea un plan de viaje detallado para ${city} desde ${startDate} hasta ${endDate} (${durationInDays} días).`,
+      travelTypeMap: {
+        solo: 'Viajero individual',
+        couple: 'Pareja',
+        family: 'Familia',
+        business: 'Viajero de negocios',
+        friends: 'Grupo de amigos'
+      },
+      transportationTypeMap: {
+        walking: 'a pie',
+        publicTransport: 'transporte público',
+        car: 'coche',
+        bicycle: 'bicicleta',
+        mixed: 'transporte mixto'
+      },
+      travelModeMap: {
+        relaxed: 'relajado',
+        moderate: 'moderado',
+        intensive: 'intensivo'
+      },
+      travelPrefs: `Tipo de viaje: %TRAVELTYPE%, Modo de transporte: %TRANSPORTATIONTYPE%, Intensidad del viaje: %TRAVELMODE%`,
       interestsTitle: 'Intereses del usuario (escala 1-10, mayor = más importante):',
       jsonFormat: 'Proporciona la respuesta en este formato JSON exacto:',
       guidelines: [
@@ -283,7 +354,10 @@ async function generateTripWithGemini(city, startDate, endDate, interests = [], 
         `Adapta las recomendaciones a las características específicas de ${city}`,
         'Asegúrate de que las descripciones en español sean correctas',
         'Garantiza una gestión realista del tiempo entre actividades',
-        'Considera los intereses del usuario al seleccionar actividades - prefiere actividades de categorías con calificaciones más altas'
+        'Considera los intereses del usuario al seleccionar actividades - prefiere actividades de categorías con calificaciones más altas',
+        'Adapta las actividades al tipo de viaje (p.ej. actividades familiares para familias, románticas para parejas)',
+        'Considera el modo de transporte preferido al planificar las rutas diarias',
+        'Ajusta el número e intensidad de las actividades según la intensidad de viaje deseada'
       ],
       food: "5 especialidades locales típicas de esta ciudad",
       transport: "3 consejos de transporte para esta ciudad",
@@ -291,6 +365,26 @@ async function generateTripWithGemini(city, startDate, endDate, interests = [], 
     },
     'IT': {
       promptTitle: `Crea un piano di viaggio dettagliato per ${city} dal ${startDate} al ${endDate} (${durationInDays} giorni).`,
+      travelTypeMap: {
+        solo: 'Viaggiatore singolo',
+        couple: 'Coppia',
+        family: 'Famiglia',
+        business: 'Viaggiatore d\'affari',
+        friends: 'Gruppo di amici'
+      },
+      transportationTypeMap: {
+        walking: 'a piedi',
+        publicTransport: 'trasporto pubblico',
+        car: 'auto',
+        bicycle: 'bicicletta',
+        mixed: 'trasporto misto'
+      },
+      travelModeMap: {
+        relaxed: 'rilassato',
+        moderate: 'moderato',
+        intensive: 'intensivo'
+      },
+      travelPrefs: `Tipo di viaggio: %TRAVELTYPE%, Modalità di trasporto: %TRANSPORTATIONTYPE%, Intensità del viaggio: %TRAVELMODE%`,
       interestsTitle: 'Interessi dell\'utente (scala 1-10, più alto = più importante):',
       jsonFormat: 'Fornisci la risposta in questo formato JSON esatto:',
       guidelines: [
@@ -299,7 +393,10 @@ async function generateTripWithGemini(city, startDate, endDate, interests = [], 
         `Adatta i consigli alle specificità di ${city}`,
         'Assicurati che le descrizioni in italiano siano corrette',
         'Assicurati che la gestione del tempo tra le attività sia realistica',
-        'Considera gli interessi dell\'utente nella scelta delle attività - preferisci attività di categorie con valutazioni più alte'
+        'Considera gli interessi dell\'utente nella scelta delle attività - preferisci attività di categorie con valutazioni più alte',
+        'Adatta le attività al tipo di viaggio (es. attività familiari per famiglie, romantiche per coppie)',
+        'Considera la modalità di trasporto preferita nella pianificazione degli itinerari giornalieri',
+        'Regola il numero e l\'intensità delle attività in base all\'intensità di viaggio desiderata'
       ],
       food: "5 specialità locali tipiche di questa città",
       transport: "3 consigli sui trasporti per questa città",
@@ -307,6 +404,26 @@ async function generateTripWithGemini(city, startDate, endDate, interests = [], 
     },
     'FR': {
       promptTitle: `Crée un plan de voyage détaillé pour ${city} du ${startDate} au ${endDate} (${durationInDays} jours).`,
+      travelTypeMap: {
+        solo: 'Voyageur individuel',
+        couple: 'Couple',
+        family: 'Famille',
+        business: 'Voyageur d\'affaires',
+        friends: 'Groupe d\'amis'
+      },
+      transportationTypeMap: {
+        walking: 'à pied',
+        publicTransport: 'transports en commun',
+        car: 'voiture',
+        bicycle: 'vélo',
+        mixed: 'transports mixtes'
+      },
+      travelModeMap: {
+        relaxed: 'détendu',
+        moderate: 'modéré',
+        intensive: 'intensif'
+      },
+      travelPrefs: `Type de voyage: %TRAVELTYPE%, Mode de transport: %TRANSPORTATIONTYPE%, Intensité du voyage: %TRAVELMODE%`,
       interestsTitle: 'Intérêts de l\'utilisateur (échelle 1-10, plus élevé = plus important):',
       jsonFormat: 'Fournis la réponse dans ce format JSON exact:',
       guidelines: [
@@ -315,7 +432,10 @@ async function generateTripWithGemini(city, startDate, endDate, interests = [], 
         `Adapte les recommandations aux spécificités de ${city}`,
         'Assure-toi que les descriptions en français sont correctes',
         'Assure une gestion réaliste du temps entre les activités',
-        'Prends en compte les intérêts de l\'utilisateur lors du choix des activités - préfère les activités de catégories avec des notes plus élevées'
+        'Prends en compte les intérêts de l\'utilisateur lors du choix des activités - préfère les activités de catégories avec des notes plus élevées',
+        'Adapte les activités au type de voyage (ex. activités familiales pour les familles, romantiques pour les couples)',
+        'Prends en compte le mode de transport préféré lors de la planification des itinéraires quotidiens',
+        'Ajuste le nombre et l\'intensité des activités en fonction de l\'intensité de voyage souhaitée'
       ],
       food: "5 spécialités locales typiques de cette ville",
       transport: "3 conseils de transport pour cette ville",
@@ -325,6 +445,15 @@ async function generateTripWithGemini(city, startDate, endDate, interests = [], 
   
   const langConfig = languageConfig[language] || languageConfig['EN'];
   
+  const travelTypeLocalized = langConfig.travelTypeMap[travelType] || langConfig.travelTypeMap.solo;
+  const transportationTypeLocalized = langConfig.transportationTypeMap[transportationType] || langConfig.transportationTypeMap.mixed;
+  const travelModeLocalized = langConfig.travelModeMap[travelMode] || langConfig.travelModeMap.moderate;
+  
+  const travelPrefs = langConfig.travelPrefs
+    .replace('%TRAVELTYPE%', travelTypeLocalized)
+    .replace('%TRANSPORTATIONTYPE%', transportationTypeLocalized)
+    .replace('%TRAVELMODE%', travelModeLocalized);
+  
   if (interests && interests.length > 0) {
     const sortedInterests = [...interests].sort((a, b) => b.rating - a.rating);
     interestsText = `\n\n${langConfig.interestsTitle}\n${sortedInterests.map(
@@ -332,7 +461,9 @@ async function generateTripWithGemini(city, startDate, endDate, interests = [], 
     ).join('\n')}`;
   }
   
-  const prompt = `${langConfig.promptTitle}${interestsText}
+  const prompt = `${langConfig.promptTitle}
+  
+  ${travelPrefs}${interestsText}
   
   ${langConfig.jsonFormat}
   {
@@ -341,6 +472,11 @@ async function generateTripWithGemini(city, startDate, endDate, interests = [], 
       "startDate": "${startDate}",
       "endDate": "${endDate}",
       "durationInDays": ${durationInDays}
+    },
+    "travelPreferences": {
+      "travelType": "${travelType}",
+      "transportationType": "${transportationType}",
+      "travelMode": "${travelMode}"
     },
     "dailyPlans": [
       /* Ein Objekt pro Tag mit:
@@ -351,7 +487,7 @@ async function generateTripWithGemini(city, startDate, endDate, interests = [], 
           - title: Name der Aktivität/Sehenswürdigkeit
           - description: Eine kurze Beschreibung
           - location: Der genaue Ort in der Stadt
-          - category: Eine Kategorie wie "Kunst", "Geschichte", "Gastronomie", "Sightseeing" usw. - auf der entsprechenden Sprache des guidelines
+          - category: Eine Kategorie wie "Kunst", "Geschichte", "Gastronomie", "Sightseeing" usw.
       */
     ],
     "recommendations": {
@@ -389,56 +525,55 @@ async function generateTripWithGemini(city, startDate, endDate, interests = [], 
   }
 }
 
-// API Endpunkte
 app.post('/api/trips', async (req, res) => {
   console.log('Empfangene Daten:', req.body);
   
-  // Überprüfen, ob es sich um Amsterdam handelt und im Zeitraum 20-23. Mai liegt
   const location = req.body.location?.toLowerCase();
   const startDate = req.body.startDate;
   const endDate = req.body.endDate;
   const interests = req.body.interests || [];
-  // Konvertiere den Sprachcode zu Großbuchstaben, da vom Frontend lowercase codes kommen
   const language = (req.body.language || 'de').toUpperCase();
   
-  console.log(`Sprache des Benutzers: ${language}`); // Log für debugging
+  const travelType = req.body.travelType || 'solo';
+  const transportationType = req.body.transportationType || 'mixed';
+  const travelMode = req.body.travelMode || 'moderate';
+  
+  console.log(`Sprache des Benutzers: ${language}`);
+  console.log(`Reisetyp: ${travelType}, Transportart: ${transportationType}, Reiseintensität: ${travelMode}`);
   
   try {
     if (location && location.includes('amsterdam') && 
         startDate === '2025-05-20' && endDate === '2025-05-23') {
       console.log('Statische Amsterdam-Daten werden zurückgegeben');
-      // Die vorgefertigten Amsterdam-Daten zurückgeben
       res.status(201).json({
         success: true,
         message: "Reiseplan erstellt",
         data: amsterdamData
       });
     } else if (location && startDate && endDate) {
-      // Für alle anderen Städte Gemini verwenden
       console.log(`Generiere Reiseplan für ${location} mit Gemini in Sprache: ${language}`);
       console.log(`Benutzerinteressen:`, interests);
       
-      // Initialisiere Wiederholungsversuch-Zähler
       let attempts = 0;
       let maxAttempts = 3;
       let lastError = null;
       
-      // Führe bis zu 3 Versuche durch
       while (attempts < maxAttempts) {
         attempts++;
         try {
           console.log(`Versuch ${attempts} von ${maxAttempts}`);
           
-          // Versuche, den Reiseplan zu generieren
           const tripData = await generateTripWithGemini(
             req.body.location,
             startDate,
             endDate,
             interests,
-            language
+            language,
+            travelType,
+            transportationType,
+            travelMode
           );
 
-          // Stadtbild von Unsplash abrufen (mit Wiederholungsversuch)
           let cityImage = null;
           let imageAttempts = 0;
           while (imageAttempts < maxAttempts && !cityImage) {
@@ -448,7 +583,6 @@ app.post('/api/trips', async (req, res) => {
             } catch (imgError) {
               console.warn(`Fehler beim Abrufen des Stadtbildes (Versuch ${imageAttempts}):`, imgError);
               if (imageAttempts < maxAttempts) {
-                // Kurz warten vor dem nächsten Versuch
                 await new Promise(resolve => setTimeout(resolve, 1000));
               }
             }
@@ -458,7 +592,6 @@ app.post('/api/trips', async (req, res) => {
             tripData.image = cityImage;
           }
           
-          // Erfolgreiche Generierung - sende Antwort und beende Schleife
           return res.status(201).json({
             success: true,
             message: "Reiseplan mit Gemini erstellt",
@@ -469,15 +602,13 @@ app.post('/api/trips', async (req, res) => {
           console.error(`Fehler bei der Erstellung des Reiseplans (Versuch ${attempts}):`, error);
           
           if (attempts < maxAttempts) {
-            // Warte etwas länger mit jedem Versuch
-            const waitTime = 1000 * attempts; // 1s, dann 2s, dann 3s
+            const waitTime = 1000 * attempts;
             console.log(`Warte ${waitTime}ms vor dem nächsten Versuch...`);
             await new Promise(resolve => setTimeout(resolve, waitTime));
           }
         }
       }
       
-      // Wenn wir hier ankommen, sind alle Versuche fehlgeschlagen
       console.error(`Alle ${maxAttempts} Versuche zur Erstellung des Reiseplans fehlgeschlagen`);
       res.status(500).json({
         success: false,
@@ -485,7 +616,6 @@ app.post('/api/trips', async (req, res) => {
         error: lastError?.message || "Unbekannter Fehler"
       });
     } else {
-      // Fehlende Parameter
       res.status(400).json({
         success: false,
         message: "Fehlende Parameter: location, startDate und endDate werden benötigt"
