@@ -371,10 +371,17 @@ app.post('/api/trips', async (req, res) => {
   
   const travelType = req.body.travelType || 'solo';
   const transportationType = req.body.transportationType || 'mixed';
-  const travelMode = req.body.travelMode || 'moderate';
+  
+  // Premium-Status aus dem Header auslesen
+  const isPremiumUser = req.headers['x-premium-status'] === 'true';
+  
+  // Reiseintensität nur für Premium-Nutzer frei wählbar, sonst "moderate"
+  const requestedTravelMode = req.body.travelMode || 'moderate';
+  const travelMode = isPremiumUser ? requestedTravelMode : 'moderate';
   
   console.log(`Sprache des Benutzers: ${language}`);
-  console.log(`Reisetyp: ${travelType}, Transportart: ${transportationType}, Reiseintensität: ${travelMode}`);
+  console.log(`Premium-Status: ${isPremiumUser ? 'Premium' : 'Kein Premium'}`);
+  console.log(`Reisetyp: ${travelType}, Transportart: ${transportationType}, Reiseintensität: ${travelMode}${!isPremiumUser && requestedTravelMode !== 'moderate' ? ' (auf "moderate" zurückgesetzt, da kein Premium)' : ''}`);
   
   try {
     if (location && startDate && endDate) {
