@@ -333,7 +333,8 @@ async function generateTripWithGemini(city, startDate, endDate, interests = [], 
           - time: z.B. "09:00 - 12:00"
           - title: Name der Aktivität/Sehenswürdigkeit
           - description: Eine kurze Beschreibung
-          - location: Der genaue Ort in der Stadt
+          - displayAddress: Eine benutzerfreundliche Adresse zur Anzeige (z.B. "Museumsinsel (Am Lustgarten)"), wichtig keine genauen Postleitzahlen oder Straßenangaben wenn nich nötig
+          - mapAddress: Eine für Kartenanwendungen optimierte Adresse (z.B. "Museumsinsel, 11111 Berlin, Germany"),
           - category: Eine Kategorie wie "Kunst", "Geschichte", "Gastronomie", "Sightseeing" usw.
       */
     ],
@@ -345,11 +346,15 @@ async function generateTripWithGemini(city, startDate, endDate, interests = [], 
   }
 
   Achte auf folgende Punkte:
-  ${langConfig.guidelines.map((guideline, index) => `${index + 1}. ${guideline}`).join('\n  ')}`;
+  ${langConfig.guidelines.map((guideline, index) => `${index + 1}. ${guideline}`).join('\n  ')}
+  
+  Wichtig: Für jede Aktivität musst du zwei verschiedene Adressformate angeben:
+  1. displayAddress: Eine benutzerfreundliche, lesbare Adresse mit Details (z.B. "Museumsinsel (Am Lustgarten)"), aber keine genauen Postleitzahlen oder Straßenangaben wenn nich nötig
+  2. mapAddress: Eine für Kartenanwendungen optimierte Adresse im Format "Name, Stadt, Land" (z.B. "Museumsinsel, 11111 ${city}, Germany"), am besten in der lokalen Sprache, wichtig ist, dass es manchmal Orte gibt die den gleichen Namenhaben, also achte darauf dass du den Stadtteil dazuschreibst wenn nötig, damit Apple Maps die Adresse auflösen kann. Sollte es keine Adresse geben, dann lass das Feld leer.`;
 
   console.log(prompt);
   log.info(prompt);
-  
+  // - mapAddress: Eine für Kartenanwendungen optimierte Adresse (z.B. "Museumsinsel, Berlin, Germany"), wichtig es dürfen nie 2 mal die gleiche am selben tag sein, sonst werden bugs auf der map erzeugt, aber auch zB Old Town und Old Town Square könnten zur gleicher Pin Position führen also bitte verhindere es, es muss Apple Maps auflösen können! Passe auch auf nie Namen an zB Petrin in Prag gibt mehrmals, du musst zB den Stadtteil dazuschreiben
   try {
     const result = await model.generateContent(prompt);
     const response = await result.response;
@@ -450,6 +455,11 @@ app.post('/api/trips', async (req, res) => {
             tripData.image = cityImage;
           }
           log.success('Reiseplan mit Gemini erstellt', { data: tripData });
+        console.log('Reiseplan mit Gemini erstellt', tripData.dailyPlans[0].activities); 
+        console.log('Reiseplan mit Gemini erstellt', tripData.dailyPlans[1].activities); 
+        console.log('Reiseplan mit Gemini erstellt', tripData.dailyPlans[2].activities); 
+        console.log('Reiseplan mit Gemini erstellt', tripData.dailyPlans[3].activities); 
+
           return res.status(201).json({
             success: true,
             message: "Reiseplan mit Gemini erstellt",
