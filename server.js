@@ -79,6 +79,90 @@ function cleanupResponseData(data) {
   return data;
 }
 
+async function getActivityImage(activityName, category) {
+  try {
+    
+    try {
+      const cacheResponse = await fetch(`${process.env.IMAGE_CACHE_URL || 'http://localhost/image-cache'}/get.php`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          key: activityName
+        })
+      });
+      
+      if (cacheResponse.ok) {
+        const cacheData = await cacheResponse.json();
+        if (cacheData.success && cacheData.image) {
+          console.log(`Retrieved cached image for: ${activityName}`);
+          log.info(`Retrieved cached image for: ${activityName}`);
+          return cacheData.image;
+        }
+      }
+    } catch (cacheError) {
+      console.error('Error checking image cache:', cacheError);
+      log.error('Error checking image cache:', { error: cacheError });
+    }
+    
+    
+    let query = activityName;
+    if (category) {
+      
+      query = `${activityName} ${category}`;
+    }
+    
+    const result = await unsplash.search.getPhotos({
+      query: query,
+      orientation: 'landscape',
+      perPage: 1
+    });
+    
+    if (result.errors) {
+      console.error('Unsplash API Fehler:', result.errors[0]);
+      return null;
+    }
+    
+    if (result.response && result.response.results && result.response.results.length > 0) {
+      const photo = result.response.results[0];
+      const imageData = {
+        url: photo.urls.regular,
+        description: photo.alt_description || `Foto von ${activityName}`,
+        photographer: photo.user.name,
+        photographerLink: photo.user.links.html
+      };
+      
+      
+      try {
+        await fetch(`${process.env.IMAGE_CACHE_URL || 'http://localhost/image-cache'}/store.php`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            key: activityName,
+            image: imageData
+          })
+        });
+        console.log(`Cached image for: ${activityName}`);
+        log.info(`Cached image for: ${activityName}`);
+      } catch (storeError) {
+        console.error('Error storing image in cache:', storeError);
+        log.error('Error storing image in cache:', { error: storeError });
+      }
+      
+      return imageData;
+    }
+    
+    return null;
+  } catch (error) {
+    console.error(`Fehler beim Abrufen des Bildes für ${activityName}:`, error);
+    log.error(`Fehler beim Abrufen des Bildes für ${activityName}:`, { error });
+    return null;
+  }
+}
+
 async function generateTripWithGemini(city, startDate, endDate, interests = [], language = 'DE', travelType = 'solo', transportationType = 'mixed', travelMode = 'moderate') {
   const start = new Date(startDate);
   const end = new Date(endDate);
@@ -354,7 +438,7 @@ async function generateTripWithGemini(city, startDate, endDate, interests = [], 
 
   console.log(prompt);
   log.info(prompt);
-  // - mapAddress: Eine für Kartenanwendungen optimierte Adresse (z.B. "Museumsinsel, Berlin, Germany"), wichtig es dürfen nie 2 mal die gleiche am selben tag sein, sonst werden bugs auf der map erzeugt, aber auch zB Old Town und Old Town Square könnten zur gleicher Pin Position führen also bitte verhindere es, es muss Apple Maps auflösen können! Passe auch auf nie Namen an zB Petrin in Prag gibt mehrmals, du musst zB den Stadtteil dazuschreiben
+  
   try {
     const result = await model.generateContent(prompt);
     const response = await result.response;
@@ -370,6 +454,39 @@ async function generateTripWithGemini(city, startDate, endDate, interests = [], 
     const tripData = JSON.parse(jsonText);
     console.log(`Gemini-generierter Reiseplan in ${language} erstellt`);
     log.info(`Gemini-generierter Reiseplan in ${language} erstellt`, { data: tripData });
+    
+    
+    if (tripData.dailyPlans && Array.isArray(tripData.dailyPlans)) {
+      const imagePromises = [];
+      
+      for (const day of tripData.dailyPlans) {
+        if (day.activities && Array.isArray(day.activities)) {
+          for (const activity of day.activities) {
+            
+            const imagePromise = (async () => {
+              try {
+                const imageData = await getActivityImage(activity.title, activity.category);
+                if (imageData) {
+                  activity.imageUrl = imageData.url;
+                }
+              } catch (imgError) {
+                console.warn(`Fehler beim Abrufen des Bildes für ${activity.title}:`, imgError);
+                log.warn(`Fehler beim Abrufen des Bildes für ${activity.title}:`, { error: imgError });
+              }
+            })();
+            imagePromises.push(imagePromise);
+          }
+        }
+      }
+      
+      
+      await Promise.all(
+        imagePromises.map(p => Promise.race([
+          p, 
+          new Promise(resolve => setTimeout(resolve, 5000)) 
+        ]))
+      );
+    }
     
     const cleanedTripData = cleanupResponseData(tripData);
     return cleanedTripData;
@@ -393,10 +510,10 @@ app.post('/api/trips', async (req, res) => {
   const travelType = req.body.travelType || 'solo';
   const transportationType = req.body.transportationType || 'mixed';
   
-  // Premium-Status aus dem Header auslesen
+  
   const isPremiumUser = req.headers['x-premium-status'] === 'true';
   
-  // Reiseintensität nur für Premium-Nutzer frei wählbar, sonst "moderate"
+  
   const requestedTravelMode = req.body.travelMode || 'moderate';
   const travelMode = isPremiumUser ? requestedTravelMode : 'moderate';
   
@@ -520,5 +637,5 @@ app.listen(port, '0.0.0.0', () => {
   log.info(`Gemini-Integration ist aktiv. API-Key ${API_KEY === "DEIN_GEMINI_API_KEY" ? "FEHLT NOCH" : "wurde konfiguriert"}`);
 });
 
-// Export as ES module
+
 export default (req, res) => app(req, res);
