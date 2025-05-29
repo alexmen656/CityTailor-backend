@@ -1,8 +1,8 @@
 <?php
 header('Content-Type: application/json');
 header('Access-Control-Allow-Origin: *');
-header('Access-Control-Allow-Methods: GET, POST, OPTIONS');  // OPTIONS hinzugefügt
-header('Access-Control-Allow-Headers: Content-Type');
+header('Access-Control-Allow-Methods: GET, POST, OPTIONS');
+header('Access-Control-Allow-Headers: Content-Type, X-User-Name');
 
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     exit(0);
@@ -28,7 +28,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     $id = uniqid() . '-' . bin2hex(random_bytes(8));
-    $username = "user123";
+    
+    if (!isset($_SERVER['HTTP_X_USER_NAME'])) {
+        http_response_code(401);
+        echo json_encode(['error' => 'No username provided']);
+        exit;
+    }
+    
+    $username = $_SERVER['HTTP_X_USER_NAME'];
     $imageUrls = [];
     $uploadDir = '../uploads/images/';
     
@@ -81,9 +88,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 else if ($_SERVER['REQUEST_METHOD'] === 'GET') {
+    if (!isset($_SERVER['HTTP_X_USER_NAME'])) {
+        http_response_code(401);
+        echo json_encode(['error' => 'No username provided']);
+        exit;
+    }
+    
+    $username = $_SERVER['HTTP_X_USER_NAME'];
     $conn = getDbConnection();
     
-    $result = $conn->query("SELECT p.id, p.username, p.location, p.caption, p.timestamp 
+    $result = $conn->query("SELECT p.id, p.username, p.location, p.caption, p.timestamp,
+                           (SELECT COUNT(*) FROM ct_post_likes WHERE post_id = p.id) as likes_count,
+                           EXISTS(SELECT 1 FROM ct_post_likes WHERE post_id = p.id AND username = '$username') as user_has_liked
                            FROM ct_posts p 
                            ORDER BY p.timestamp DESC");
     
@@ -103,7 +119,9 @@ else if ($_SERVER['REQUEST_METHOD'] === 'GET') {
             'location' => $row['location'],
             'caption' => $row['caption'],
             'imageUrls' => $imageUrls,
-            'timestamp' => $row['timestamp']
+            'timestamp' => $row['timestamp'],
+            'likes' => (int)$row['likes_count'],
+            'hasLiked' => (bool)$row['user_has_liked']
         ];
     }
     

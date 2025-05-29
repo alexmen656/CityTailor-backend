@@ -15,5 +15,15 @@ CREATE TABLE IF NOT EXISTS ct_post_images (
     FOREIGN KEY (post_id) REFERENCES ct_posts(id) ON DELETE CASCADE
 );
 
+CREATE TABLE IF NOT EXISTS ct_post_likes (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    post_id VARCHAR(50) NOT NULL,
+    username VARCHAR(100) NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (post_id) REFERENCES ct_posts(id) ON DELETE CASCADE,
+    UNIQUE KEY unique_like (post_id, username)
+);
+
 CREATE INDEX idx_ct_posts_timestamp ON ct_posts(timestamp);
 CREATE INDEX idx_ct_post_images_post_id ON ct_post_images(post_id);
+CREATE INDEX idx_ct_post_likes_post_id ON ct_post_likes(post_id);
