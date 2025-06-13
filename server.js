@@ -6,6 +6,8 @@ import { initLogger, log } from 'control-center-logger';
 import { createApi } from 'unsplash-js';
 import fetch from 'node-fetch';
 
+let serverStartTime = null;
+
 const app = express();
 const port = 4040;
 
@@ -21,12 +23,16 @@ initLogger({
 
 app.use(express.json());
 app.use(cors());
-log.success('App Stated!')
+
+serverStartTime = new Date();
+log.success('App Started!');
+console.log(`Server gestartet um: ${serverStartTime.toISOString()}`);
 
 const API_KEY = process.env.GEMINI_API_KEY;
 const genAI = new GoogleGenerativeAI(API_KEY);
 
-const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash-lite" });//gemini-1.5-flash
+const modelName = "gemini-2.0-flash-lite";
+const model = genAI.getGenerativeModel({ model: modelName });
 
 const unsplash = createApi({
   accessKey: process.env.UNSPLASH_ACCESS_KEY || '',
@@ -531,6 +537,12 @@ async function savePlanToDatabase(tripData, username) {
 app.post('/api/trips', async (req, res) => {
   console.log('Empfangene Daten:', req.body);
   log.info('Empfangene Daten:', { data: req.body });
+  
+  // Startzeit für diesen Request erfassen
+  const requestStartTime = new Date();
+  const serverUptimeMs = serverStartTime ? requestStartTime - serverStartTime : 0;
+  console.log(`Request empfangen nach ${serverUptimeMs}ms Serverzeit (Modell: ${modelName})`);
+  log.info(`Request empfangen nach ${serverUptimeMs}ms Serverzeit (Modell: ${modelName})`, { data: { serverUptimeMs, model: modelName } });
 
   const location = req.body.location?.toLowerCase();
   const startDate = req.body.startDate;
@@ -611,6 +623,14 @@ app.post('/api/trips', async (req, res) => {
           log.success('Reiseplan mit Gemini erstellt', { data: tripData });
           console.log('Reiseplan finito!', tripData);
           
+          const requestEndTime = new Date();
+          const processingTimeMs = requestEndTime - requestStartTime;
+          const totalServerTimeMs = serverStartTime ? requestEndTime - serverStartTime : 0;
+          
+          console.log(`Reiseplan erstellt in ${processingTimeMs}ms (Gesamtserverzeit: ${totalServerTimeMs}ms, Modell: ${modelName})`);
+          log.info(`Reiseplan erstellt in ${processingTimeMs}ms (Gesamtserverzeit: ${totalServerTimeMs}ms, Modell: ${modelName})`, 
+                  { data: { processingTimeMs, totalServerTimeMs, model: modelName } });
+          
           const username = req.headers['x-user-name'] || req.query.username;
           let planId = null;
           
@@ -625,7 +645,10 @@ app.post('/api/trips', async (req, res) => {
             success: true,
             message: "Reiseplan mit Gemini erstellt",
             data: tripData,
-            planId: planId
+            planId: planId,
+            processingTimeMs: processingTimeMs,
+            serverUptimeMs: totalServerTimeMs,
+            model: modelName
           });
 
         } catch (error) {
@@ -644,24 +667,49 @@ app.post('/api/trips', async (req, res) => {
       
       console.error(`Alle ${maxAttempts} Versuche zur Erstellung des Reiseplans fehlgeschlagen`);
       log.error(`Alle ${maxAttempts} Versuche zur Erstellung des Reiseplans fehlgeschlagen`, { data: { maxAttempts } });
+      
+      const requestEndTime = new Date();
+      const processingTimeMs = requestEndTime - requestStartTime;
+      const totalServerTimeMs = serverStartTime ? requestEndTime - serverStartTime : 0;
+      
+      console.log(`Verarbeitung fehlgeschlagen nach ${processingTimeMs}ms (Modell: ${modelName})`);
+      log.info(`Verarbeitung fehlgeschlagen nach ${processingTimeMs}ms (Modell: ${modelName})`, { data: { processingTimeMs, model: modelName } });
+      
       res.status(500).json({
         success: false,
         message: `Fehler bei der Erstellung des Reiseplans nach ${maxAttempts} Versuchen`,
-        error: lastError?.message || "Unbekannter Fehler"
+        error: lastError?.message || "Unbekannter Fehler",
+        processingTimeMs: processingTimeMs,
+        serverUptimeMs: totalServerTimeMs,
+        model: modelName
       });
     } else {
+      const requestEndTime = new Date();
+      const processingTimeMs = requestEndTime - requestStartTime;
+      const totalServerTimeMs = serverStartTime ? requestEndTime - serverStartTime : 0;
+      
       res.status(400).json({
         success: false,
-        message: "Fehlende Parameter: location, startDate und endDate werden benötigt"
+        message: "Fehlende Parameter: location, startDate und endDate werden benötigt",
+        processingTimeMs: processingTimeMs,
+        serverUptimeMs: totalServerTimeMs,
+        model: modelName
       });
     }
   } catch (error) {
+    const requestEndTime = new Date();
+    const processingTimeMs = requestEndTime - requestStartTime;
+    const totalServerTimeMs = serverStartTime ? requestEndTime - serverStartTime : 0;
+    
     console.error("Server-Fehler:", error);
     log.error("Server-Fehler:", { error });
     res.status(500).json({
       success: false,
       message: "Interner Serverfehler",
-      error: error.message
+      error: error.message,
+      processingTimeMs: processingTimeMs,
+      serverUptimeMs: totalServerTimeMs,
+      model: modelName
     });
   }
 });
