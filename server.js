@@ -26,7 +26,7 @@ log.success('App Stated!')
 const API_KEY = process.env.GEMINI_API_KEY;
 const genAI = new GoogleGenerativeAI(API_KEY);
 
-const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash-preview-04-17" });
+const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
 
 const unsplash = createApi({
   accessKey: process.env.UNSPLASH_ACCESS_KEY || '',
@@ -497,6 +497,37 @@ async function generateTripWithGemini(city, startDate, endDate, interests = [], 
   }
 }
 
+async function savePlanToDatabase(tripData, username) {
+  try {
+    console.log('Speichere Reiseplan in der Datenbank...');
+    log.info('Speichere Reiseplan in der Datenbank...', { data: { location: tripData.location } });
+    
+    const response = await fetch(`${process.env.BACKEND_URL || 'http://localhost'}/backend/plans/plans.php`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-User-Name': username
+      },
+      body: JSON.stringify(tripData)
+    });
+    
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(`Fehler beim Speichern des Plans: ${errorData.error || response.statusText}`);
+    }
+    
+    const data = await response.json();
+    console.log('Reiseplan erfolgreich in der Datenbank gespeichert', data);
+    log.success('Reiseplan erfolgreich in der Datenbank gespeichert', { data });
+    
+    return data.id;
+  } catch (error) {
+    console.error('Fehler beim Speichern des Reiseplans in der Datenbank:', error);
+    log.error('Fehler beim Speichern des Reiseplans in der Datenbank:', { error });
+    return null;
+  }
+}
+
 app.post('/api/trips', async (req, res) => {
   console.log('Empfangene Daten:', req.body);
   log.info('Empfangene Daten:', { data: req.body });
@@ -510,10 +541,16 @@ app.post('/api/trips', async (req, res) => {
   const travelType = req.body.travelType || 'solo';
   const transportationType = req.body.transportationType || 'mixed';
   
+  const username = req.headers['x-user-name'] || req.query.username;
+  if (username) {
+    console.log(`Benutzer authentifiziert: ${username}`);
+    log.info(`Benutzer authentifiziert: ${username}`, { data: { username } });
+  } else {
+    console.log('Kein Benutzername angegeben, Plan wird generiert, aber nicht gespeichert');
+    log.info('Kein Benutzername angegeben, Plan wird generiert, aber nicht gespeichert');
+  }
   
   const isPremiumUser = req.headers['x-premium-status'] === 'true';
-  
-  
   const requestedTravelMode = req.body.travelMode || 'moderate';
   const travelMode = isPremiumUser ? requestedTravelMode : 'moderate';
   
@@ -572,15 +609,23 @@ app.post('/api/trips', async (req, res) => {
             tripData.image = cityImage;
           }
           log.success('Reiseplan mit Gemini erstellt', { data: tripData });
-        console.log('Reiseplan mit Gemini erstellt', tripData.dailyPlans[0].activities); 
-        console.log('Reiseplan mit Gemini erstellt', tripData.dailyPlans[1].activities); 
-        console.log('Reiseplan mit Gemini erstellt', tripData.dailyPlans[2].activities); 
-        console.log('Reiseplan mit Gemini erstellt', tripData.dailyPlans[3].activities); 
+          console.log('Reiseplan finito!', tripData);
+          
+          const username = req.headers['x-user-name'] || req.query.username;
+          let planId = null;
+          
+         // if (username) {
+            planId = await savePlanToDatabase(tripData, username);
+         // } else {
+           // console.log('Kein Benutzername angegeben, Plan wird nicht in der Datenbank gespeichert');
+            //log.info('Kein Benutzername angegeben, Plan wird nicht in der Datenbank gespeichert');
+          //}
 
           return res.status(201).json({
             success: true,
             message: "Reiseplan mit Gemini erstellt",
-            data: tripData
+            data: tripData,
+            planId: planId
           });
 
         } catch (error) {

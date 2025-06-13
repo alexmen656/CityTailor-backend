@@ -2,3 +2,4 @@
 node_modules/*
 .vercel
 logger.js
+backend/posts/plans.php
